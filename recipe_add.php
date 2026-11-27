@@ -5,11 +5,50 @@ require_once __DIR__ . '/db.php';
 $units = $pdo->query("SELECT unit_id, metric_code, us_code FROM units ORDER BY unit_id ASC")->fetchAll();
 $error = '';
 
+$usToMetric = [
+    'lb'          => ['factor' => 453.59237, 'display' => 'g',  'unit_id' => 1],
+    'lbs'         => ['factor' => 453.59237, 'display' => 'g',  'unit_id' => 1],
+    'pound'       => ['factor' => 453.59237, 'display' => 'g',  'unit_id' => 1],
+    'pounds'      => ['factor' => 453.59237, 'display' => 'g',  'unit_id' => 1],
+    'oz'          => ['factor' => 28.34952,  'display' => 'g',  'unit_id' => 1],
+    'ounce'       => ['factor' => 28.34952,  'display' => 'g',  'unit_id' => 1],
+    'ounces'      => ['factor' => 28.34952,  'display' => 'g',  'unit_id' => 1],
+    'cup'         => ['factor' => 236.58824, 'display' => 'mL', 'unit_id' => 2],
+    'cups'        => ['factor' => 236.58824, 'display' => 'mL', 'unit_id' => 2],
+    'c'           => ['factor' => 236.58824, 'display' => 'mL', 'unit_id' => 2],
+    'floz'        => ['factor' => 29.57353,  'display' => 'mL', 'unit_id' => 2],
+    'fluidounce'  => ['factor' => 29.57353,  'display' => 'mL', 'unit_id' => 2],
+    'fluidounces' => ['factor' => 29.57353,  'display' => 'mL', 'unit_id' => 2],
+    'pt'          => ['factor' => 473.17647, 'display' => 'mL', 'unit_id' => 2],
+    'pint'        => ['factor' => 473.17647, 'display' => 'mL', 'unit_id' => 2],
+    'pints'       => ['factor' => 473.17647, 'display' => 'mL', 'unit_id' => 2],
+    'qt'          => ['factor' => 946.35295, 'display' => 'mL', 'unit_id' => 2],
+    'quart'       => ['factor' => 946.35295, 'display' => 'mL', 'unit_id' => 2],
+    'quarts'      => ['factor' => 946.35295, 'display' => 'mL', 'unit_id' => 2],
+    'gal'         => ['factor' => 3785.41178,'display' => 'mL', 'unit_id' => 2],
+    'gallon'      => ['factor' => 3785.41178,'display' => 'mL', 'unit_id' => 2],
+    'gallons'     => ['factor' => 3785.41178,'display' => 'mL', 'unit_id' => 2],
+    'tsp'         => ['factor' => 4.92892,   'display' => 'mL', 'unit_id' => 3],
+    'teaspoon'    => ['factor' => 4.92892,   'display' => 'mL', 'unit_id' => 3],
+    'teaspoons'   => ['factor' => 4.92892,   'display' => 'mL', 'unit_id' => 3],
+    'tbsp'        => ['factor' => 14.78676,  'display' => 'mL', 'unit_id' => 4],
+    'tablespoon'  => ['factor' => 14.78676,  'display' => 'mL', 'unit_id' => 4],
+    'tablespoons' => ['factor' => 14.78676,  'display' => 'mL', 'unit_id' => 4],
+    'in'          => ['factor' => 2.54,      'display' => 'cm', 'unit_id' => 5],
+    'inch'        => ['factor' => 2.54,      'display' => 'cm', 'unit_id' => 5],
+    'inches'      => ['factor' => 2.54,      'display' => 'cm', 'unit_id' => 5],
+];
+
+$metricScale = [
+    'kg' => ['factor' => 1000.0, 'display' => 'g',  'default_unit_id' => 1],
+    'l'  => ['factor' => 1000.0, 'display' => 'mL', 'default_unit_id' => 2],
+];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title        = trim($_POST['title'] ?? '');
     $baseServings = (float)($_POST['base_servings'] ?? 1);
-    $prepMinutes  = $_POST['prep_minutes'] !== '' ? (int)$_POST['prep_minutes'] : null;
-    $cookMinutes  = $_POST['cook_minutes'] !== '' ? (int)$_POST['cook_minutes'] : null;
+    $prepMinutes  = ($_POST['prep_minutes'] ?? '') !== '' ? (int)$_POST['prep_minutes'] : null;
+    $cookMinutes  = ($_POST['cook_minutes'] ?? '') !== '' ? (int)$_POST['cook_minutes'] : null;
     $notes        = trim($_POST['notes'] ?? '') ?: null;
 
     $ingNames    = $_POST['ing_name'] ?? [];
@@ -21,6 +60,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($title === '' || $baseServings <= 0) {
         $error = 'Recipe title and a positive base servings count are required.';
+    } elseif (($prepMinutes !== null && ($prepMinutes < 0 || $prepMinutes > 65535)) ||
+              ($cookMinutes !== null && ($cookMinutes < 0 || $cookMinutes > 65535))) {
+        $error = 'Prep and cook times must be between 0 and 65,535 minutes.';
     } else {
         try {
             $pdo->beginTransaction();
@@ -55,6 +97,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $display = trim((string)($ingDisplays[$i] ?? ''));
                 $unitVal = ($ingUnits[$i] ?? '') !== '' ? (int)$ingUnits[$i] : null;
                 $noteVal = trim((string)($ingNotes[$i] ?? '')) ?: null;
+
+                $key = strtolower(rtrim(str_replace(' ', '', $display), '.'));
+                if (isset($usToMetric[$key])) {
+                    $qty     = round($qty * $usToMetric[$key]['factor'], 3);
+                    $display = $usToMetric[$key]['display'];
+                    if ($unitVal === null) {
+                        $unitVal = $usToMetric[$key]['unit_id'];
+                    }
+                } elseif (isset($metricScale[$key])) {
+                    $qty     = round($qty * $metricScale[$key]['factor'], 3);
+                    $display = $metricScale[$key]['display'];
+                    if ($unitVal === null) {
+                        $unitVal = $metricScale[$key]['default_unit_id'];
+                    }
+                }
 
                 $stmtIng->execute([
                     ':recipe_id'       => $newRecipeId,
@@ -95,6 +152,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Failed to save recipe: ' . $e->getMessage();
         }
     }
+}
+
+$formTitle        = ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '') ? (string)($_POST['title'] ?? '') : '';
+$formBaseServings = ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '') ? (string)($_POST['base_servings'] ?? '4') : '4';
+$formPrepMinutes  = ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '') ? (string)($_POST['prep_minutes'] ?? '') : '';
+$formCookMinutes  = ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '') ? (string)($_POST['cook_minutes'] ?? '') : '';
+$formNotes        = ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '') ? (string)($_POST['notes'] ?? '') : '';
+
+$formIngredients = [];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '') {
+    foreach (($_POST['ing_name'] ?? []) as $i => $name) {
+        $formIngredients[] = [
+            'ingredient_name' => (string)$name,
+            'metric_qty'      => (string)($_POST['ing_qty'][$i] ?? ''),
+            'metric_display'  => (string)($_POST['ing_display'][$i] ?? ''),
+            'unit_id'         => (string)($_POST['ing_unit'][$i] ?? ''),
+            'prep_note'       => (string)($_POST['ing_note'][$i] ?? ''),
+        ];
+    }
+}
+if (empty($formIngredients)) {
+    $formIngredients = [['ingredient_name' => '', 'metric_qty' => '', 'metric_display' => '', 'unit_id' => '', 'prep_note' => '']];
+}
+
+$formSteps = [];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '') {
+    foreach (($_POST['steps'] ?? []) as $text) {
+        $formSteps[] = (string)$text;
+    }
+}
+if (empty($formSteps)) {
+    $formSteps = [''];
 }
 ?>
 <!DOCTYPE html>
@@ -141,43 +230,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <div class="grid-meta">
         <div>
           <label>Title *</label>
-          <input type="text" name="title" required placeholder="e.g., Chicken Tikka Masala">
+          <input type="text" name="title" required placeholder="e.g., Chicken Tikka Masala" value="<?= htmlspecialchars($formTitle) ?>">
         </div>
         <div>
           <label>Base Servings *</label>
-          <input type="number" step="0.5" min="0.5" name="base_servings" value="4" required>
+          <input type="number" step="0.5" min="0.5" name="base_servings" value="<?= htmlspecialchars($formBaseServings) ?>" required>
         </div>
         <div>
           <label>Prep (min)</label>
-          <input type="number" min="0" name="prep_minutes" placeholder="20">
+          <input type="number" min="0" max="65535" name="prep_minutes" placeholder="20" value="<?= htmlspecialchars($formPrepMinutes) ?>">
         </div>
         <div>
           <label>Cook (min)</label>
-          <input type="number" min="0" name="cook_minutes" placeholder="30">
+          <input type="number" min="0" max="65535" name="cook_minutes" placeholder="30" value="<?= htmlspecialchars($formCookMinutes) ?>">
         </div>
       </div>
       <div>
         <label>Notes</label>
-        <textarea name="notes" rows="2" placeholder="Yield notes, storage tips, or variations..."></textarea>
+        <textarea name="notes" rows="2" placeholder="Yield notes, storage tips, or variations..."><?= htmlspecialchars($formNotes) ?></textarea>
       </div>
     </div>
 
     <div class="card">
       <h2>Ingredients</h2>
       <div id="ingredients-list">
-        <div class="ing-row">
-          <input type="text" name="ing_name[]" placeholder="Ingredient (e.g., Chicken breast)">
-          <input type="number" step="0.001" min="0" name="ing_qty[]" placeholder="Qty">
-          <input type="text" name="ing_display[]" placeholder="Unit (g, mL)">
-          <select name="ing_unit[]">
-            <option value="">No US furigana</option>
-            <?php foreach ($units as $u): ?>
-              <option value="<?= (int)$u['unit_id'] ?>"><?= htmlspecialchars($u['metric_code']) ?> → <?= htmlspecialchars($u['us_code']) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <input type="text" name="ing_note[]" placeholder="Prep note (diced)">
-          <button type="button" class="btn-remove" onclick="this.parentElement.remove()">✕</button>
-        </div>
+        <?php foreach ($formIngredients as $ing): ?>
+          <div class="ing-row">
+            <input type="text" name="ing_name[]" placeholder="Ingredient (e.g., Chicken breast)" value="<?= htmlspecialchars($ing['ingredient_name']) ?>">
+            <input type="number" step="0.001" min="0" name="ing_qty[]" placeholder="Qty" value="<?= htmlspecialchars($ing['metric_qty']) ?>">
+            <input type="text" name="ing_display[]" placeholder="Unit (g, mL)" value="<?= htmlspecialchars($ing['metric_display']) ?>">
+            <select name="ing_unit[]">
+              <option value="">No US furigana</option>
+              <?php foreach ($units as $u): ?>
+                <option value="<?= (int)$u['unit_id'] ?>" <?= ($ing['unit_id'] === (string)$u['unit_id']) ? 'selected' : '' ?>>
+                  <?= htmlspecialchars($u['metric_code']) ?> → <?= htmlspecialchars($u['us_code']) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+            <input type="text" name="ing_note[]" placeholder="Prep note (diced)" value="<?= htmlspecialchars($ing['prep_note']) ?>">
+            <button type="button" class="btn-remove" onclick="this.parentElement.remove()">✕</button>
+          </div>
+        <?php endforeach; ?>
       </div>
       <button type="button" class="btn-secondary" onclick="addIngredient()">+ Add Ingredient</button>
     </div>
@@ -185,10 +278,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="card">
       <h2>Steps</h2>
       <div id="steps-list">
-        <div class="step-row">
-          <textarea name="steps[]" rows="2" placeholder="Step instruction..."></textarea>
-          <button type="button" class="btn-remove" onclick="this.parentElement.remove()">✕</button>
-        </div>
+        <?php foreach ($formSteps as $stepText): ?>
+          <div class="step-row">
+            <textarea name="steps[]" rows="2" placeholder="Step instruction..."><?= htmlspecialchars($stepText) ?></textarea>
+            <button type="button" class="btn-remove" onclick="this.parentElement.remove()">✕</button>
+          </div>
+        <?php endforeach; ?>
       </div>
       <button type="button" class="btn-secondary" onclick="addStep()">+ Add Step</button>
     </div>
@@ -227,6 +322,21 @@ function addStep() {
   `;
   document.getElementById('steps-list').appendChild(row);
 }
+
+let isDirty = false;
+document.querySelector('form').addEventListener('input', () => { isDirty = true; });
+document.querySelector('form').addEventListener('click', (e) => {
+  if (e.target.tagName === 'BUTTON' && e.target.type !== 'submit') {
+    isDirty = true;
+  }
+});
+document.querySelector('form').addEventListener('submit', () => { isDirty = false; });
+window.addEventListener('beforeunload', (e) => {
+  if (isDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 </script>
 </body>
 </html>

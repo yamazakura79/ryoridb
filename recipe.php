@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
-);
+;
 
 $recipeId = (int)($_GET['id'] ?? 1);
 
@@ -16,8 +16,7 @@ if (!$recipe) {
 $targetServings = isset($_GET['servings']) && (float)$_GET['servings'] > 0
     ? (float)$_GET['servings']
     : (float)$recipe['base_servings'];
-
-$stmtItems = $pdo->prepare("
+    $stmtItems = $pdo->prepare("
     SELECT
         sort_order,
         ingredient_name,
@@ -27,10 +26,7 @@ $stmtItems = $pdo->prepare("
         CASE
             WHEN to_us_factor IS NULL THEN NULL
             ELSE ROUND(
-                GREATEST(
-                    round_increment,
-                    ROUND(((metric_per_serving * :servings) * to_us_factor) / round_increment) * round_increment
-                ),
+                ROUND(((metric_per_serving * :servings) * to_us_factor) / round_increment) * round_increment,
                 2
             )
         END AS scaled_us,
@@ -39,6 +35,7 @@ $stmtItems = $pdo->prepare("
     WHERE recipe_id = :recipe_id
     ORDER BY sort_order ASC
 ");
+
 $stmtItems->execute([
     ':servings'  => $targetServings,
     ':recipe_id' => $recipeId
